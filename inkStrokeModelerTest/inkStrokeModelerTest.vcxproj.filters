@@ -206,5 +206,17 @@
     <ClInclude Include="HiEasyX.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="main.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shader.hlsl" />
+    <None Include="main2.cpp">
+      <Filter>源文件</Filter>
+    </None>
   </ItemGroup>
 </Project>

@@ -221,6 +221,7 @@
     <ClCompile Include="HiEasyX\HiSysGUI\SysStatic.cpp" />
     <ClCompile Include="HiEasyX\HiWindow.cpp" />
     <ClCompile Include="main.cpp" />
+    <None Include="main2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="HiEasyX.h" />
@@ -255,6 +256,13 @@
     <ClInclude Include="HiEasyX\HiSysGUI\SysRadioButton.h" />
     <ClInclude Include="HiEasyX\HiSysGUI\SysStatic.h" />
     <ClInclude Include="HiEasyX\HiWindow.h" />
+    <ClInclude Include="main.h" />
+    <ClInclude Include="renderer.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="shader.hlsl">
+      <FileType>Document</FileType>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
