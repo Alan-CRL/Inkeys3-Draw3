@@ -1,0 +1,11 @@
+/.vs/
+/packages/
+/Release/
+/Debug/
+/x64/
+/ARM64/
+/inkStrokeModelerTest/Release/
+/inkStrokeModelerTest/Debug/
+/inkStrokeModelerTest/x64/
+/inkStrokeModelerTest/ARM64/
+/auto upload.bat
