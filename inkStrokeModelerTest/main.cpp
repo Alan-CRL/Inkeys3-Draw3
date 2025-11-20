@@ -2,28 +2,6 @@
 
 #include "renderer.h"
 
-// 调测专用
-void Test()
-{
-	MessageBoxW(NULL, L"标记处", L"标记", MB_OK | MB_SYSTEMMODAL);
-}
-void Testb(bool t)
-{
-	MessageBoxW(NULL, t ? L"true" : L"false", L"真否标记", MB_OK | MB_SYSTEMMODAL);
-}
-void Testi(long long t)
-{
-	MessageBoxW(NULL, to_wstring(t).c_str(), L"数值标记", MB_OK | MB_SYSTEMMODAL);
-}
-void Testd(double t)
-{
-	MessageBoxW(NULL, to_wstring(t).c_str(), L"浮点标记", MB_OK | MB_SYSTEMMODAL);
-}
-void Testw(wstring t)
-{
-	MessageBoxW(NULL, t.c_str(), L"字符标记", MB_OK | MB_SYSTEMMODAL);
-}
-
 WindowInfoClass windowInfo;
 InkRenderer inkRenderer;
 
@@ -36,7 +14,8 @@ int main()
 	{
 		// 创建 HARDWARE 设备
 
-		UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+		// 后续去掉调试表示！！！
+		UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG;
 
 		D3D_FEATURE_LEVEL featureLevels[] = {
 			D3D_FEATURE_LEVEL_11_1,
@@ -105,14 +84,23 @@ int main()
 		// 初始化失败，可能是 hlsl 文件没找到
 		MessageBox(NULL, L"Failed to init D3D Renderer. Check InkShader.hlsl location.", L"Error", MB_OK);
 	}
+	inkRenderer.SetScreenSize((float)windowInfo.w, (float)windowInfo.h);
 
 	// --- 开始 D3D 绘制 ---
 	// 1. 不需要 BeginDraw，但可以手动 Clear (如果需要背景色)
-	float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	// 清空我们的 RTV
 	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
 
-	// TODO: 这里可以添加绘制代码
+	float x1 = 100.0f;
+	float y1 = 100.0f;
+	float r1 = 25.0f;
+
+	float x2 = 500.0f;
+	float y2 = 500.0f;
+	float r2 = 150.0f;
+
+	inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
 
 	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 
