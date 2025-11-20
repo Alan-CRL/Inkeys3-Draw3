@@ -25,7 +25,7 @@ void Testw(wstring t)
 }
 
 WindowInfoClass windowInfo;
-InkRenderer g_InkRenderer;
+InkRenderer inkRenderer;
 
 int main()
 {
@@ -101,7 +101,7 @@ int main()
 		swapChain->SetBackgroundColor(&color);
 	}
 
-	if (!g_InkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain)) {
+	if (!inkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain)) {
 		// 初始化失败，可能是 hlsl 文件没找到
 		MessageBox(NULL, L"Failed to init D3D Renderer. Check InkShader.hlsl location.", L"Error", MB_OK);
 	}
@@ -109,14 +109,10 @@ int main()
 	// --- 开始 D3D 绘制 ---
 	// 1. 不需要 BeginDraw，但可以手动 Clear (如果需要背景色)
 	float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-	// 清空我们的 RTV (注意：这里用 g_InkRenderer.m_pRTV)
-	d3dDeviceContext->ClearRenderTargetView(g_InkRenderer.m_pRTV, clearColor);
+	// 清空我们的 RTV
+	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
 
-	// 2. 绘制我们的测试矩形
-	// 参数：x=100, y=100, w=200, h=100, 红色(RGBA), 屏幕宽800, 高600
-	g_InkRenderer.DrawRect(100.0f, 100.0f, 200.0f, 100.0f,
-		XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), // 半透明红色
-		(float)windowInfo.w, (float)windowInfo.h);
+	// TODO: 这里可以添加绘制代码
 
 	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 

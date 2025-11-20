@@ -237,6 +237,7 @@ int main()
 		d2dDeviceContext->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
 		// 绘制一段墨迹（测试）
+		// 样式为两端粗细不同的线段，起始端是凸出，而终点端是凹入的，结合切线计算和路径闭合
 		// 需要注意的是：当前代码设计之初就没有考虑过内涵的情况，并且不应该会出现这种粗细变化case，需要在后面模拟压感阶段避免
 
 		// 首先需要准备 (x1,y1,r1) (x2,y2,r2) 两个端点位置和半径
@@ -285,7 +286,7 @@ int main()
 				d2dFactory1->CreatePathGeometry(&path);
 				path->Open(&sink);
 
-				sink->BeginFigure(D2D1::Point2F(tp1x, tp1y), D2D1_FIGURE_BEGIN_HOLLOW);
+				sink->BeginFigure(D2D1::Point2F(tp1x, tp1y), D2D1_FIGURE_BEGIN_FILLED);
 
 				// 起始端圆弧
 				{
@@ -393,7 +394,7 @@ int main()
 					&strokeBrush
 				);
 
-				d2dDeviceContext->DrawGeometry(path, strokeBrush, 3.0f);
+				d2dDeviceContext->FillGeometry(path, strokeBrush);
 			}
 		}
 

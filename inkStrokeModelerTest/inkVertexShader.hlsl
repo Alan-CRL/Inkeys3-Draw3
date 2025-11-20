@@ -1,4 +1,11 @@
+// inkVertexShader.hlsl
+
 #include "ink.hlsli"
+
+cbuffer CB_Shape : register(b1)
+{
+    int shapeType; // Ô¤Áô
+};
 
 PS_INPUT main(VS_INPUT input)
 {
