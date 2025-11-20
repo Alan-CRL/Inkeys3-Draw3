@@ -22,6 +22,12 @@
     <Filter Include="头文件\HiEasyX\HiGUI">
       <UniqueIdentifier>{f1caf9dd-ff54-4acd-b734-2f2937a2e155}</UniqueIdentifier>
     </Filter>
+    <Filter Include="HLSL">
+      <UniqueIdentifier>{46041589-9d49-4fea-b232-cc2c69a20672}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="废弃代码">
+      <UniqueIdentifier>{5f55532c-0c84-4427-a556-5396ab2509ef}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -212,11 +218,38 @@
     <ClInclude Include="renderer.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="shader.hlsl" />
-    <None Include="main2.cpp">
-      <Filter>源文件</Filter>
+    <None Include="ink.hlsli">
+      <Filter>HLSL</Filter>
     </None>
+    <None Include="shader.hlsl">
+      <Filter>废弃代码</Filter>
+    </None>
+    <None Include="main2.cpp">
+      <Filter>废弃代码</Filter>
+    </None>
+    <None Include="inkPixelShader.cso">
+      <Filter>资源文件</Filter>
+    </None>
+    <None Include="inkVertexShader.cso">
+      <Filter>资源文件</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="inkVertexShader.hlsl">
+      <Filter>HLSL</Filter>
+    </FxCompile>
+    <FxCompile Include="inkPixelShader.hlsl">
+      <Filter>HLSL</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="inkStrokeModelerTest.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

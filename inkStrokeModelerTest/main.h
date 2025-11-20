@@ -16,12 +16,10 @@
 #pragma comment(lib, "ink_stroke_modeler_combined.lib")
 
 #include <d3d11.h>
-#include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <d2d1_1.h>
 #include <dxgi1_2.h>
 #pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "dxgi.lib")
 

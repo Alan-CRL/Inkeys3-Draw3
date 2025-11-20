@@ -61,6 +61,7 @@ int main()
 	{
 		windowHWND = hiex::initgraph_win32(windowInfo.w, windowInfo.h);
 	}
+
 	// SwapChain
 	CComPtr<IDXGISwapChain1> swapChain;
 	{
@@ -105,21 +106,19 @@ int main()
 		MessageBox(NULL, L"Failed to init D3D Renderer. Check InkShader.hlsl location.", L"Error", MB_OK);
 	}
 
-	{
-		// --- 开始 D3D 绘制 ---
-		// 1. 不需要 BeginDraw，但可以手动 Clear (如果需要背景色)
-		float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-		// 清空我们的 RTV (注意：这里用 g_InkRenderer.m_pRTV)
-		d3dDeviceContext->ClearRenderTargetView(g_InkRenderer.m_pRTV, clearColor);
+	// --- 开始 D3D 绘制 ---
+	// 1. 不需要 BeginDraw，但可以手动 Clear (如果需要背景色)
+	float clearColor[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	// 清空我们的 RTV (注意：这里用 g_InkRenderer.m_pRTV)
+	d3dDeviceContext->ClearRenderTargetView(g_InkRenderer.m_pRTV, clearColor);
 
-		// 2. 绘制我们的测试矩形
-		// 参数：x=100, y=100, w=200, h=100, 红色(RGBA), 屏幕宽800, 高600
-		g_InkRenderer.DrawRect(100.0f, 100.0f, 200.0f, 100.0f,
-			XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), // 半透明红色
-			(float)windowInfo.w, (float)windowInfo.h);
+	// 2. 绘制我们的测试矩形
+	// 参数：x=100, y=100, w=200, h=100, 红色(RGBA), 屏幕宽800, 高600
+	g_InkRenderer.DrawRect(100.0f, 100.0f, 200.0f, 100.0f,
+		XMFLOAT4(0.0f, 1.0f, 0.0f, 1.0f), // 半透明红色
+		(float)windowInfo.w, (float)windowInfo.h);
 
-		swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
-	}
+	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 
 	getmessage(EM_KEY);
 	return 0;
