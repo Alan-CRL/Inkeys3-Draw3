@@ -1,3 +1,5 @@
+// renderer.h
+
 #pragma once
 
 #include <d3d11.h>
@@ -226,33 +228,8 @@ private:
 		};
 
 		HRESULT hr = device->CreateInputLayout(layout, _countof(layout), vsBlob.data, vsBlob.size, &inputLayout);
-		if (FAILED(hr)) {
-			// --- 调试代码开始 ---
-	// 这段代码会把具体的错误原因输出到 Visual Studio 的 "输出" 窗口
-			CComPtr<ID3D11InfoQueue> infoQueue;
-			device->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&infoQueue);
-			Testi(1);
-			if (infoQueue) {
-				Testi(2);
-				UINT64 messageCount = infoQueue->GetNumStoredMessages();
-				for (UINT64 i = 0; i < messageCount; i++) {
-					Testi(3);
-					SIZE_T messageLength = 0;
-					infoQueue->GetMessage(i, nullptr, &messageLength);
-					D3D11_MESSAGE* pMessage = (D3D11_MESSAGE*)malloc(messageLength);
-					if (pMessage) {
-						Testi(4);
-						infoQueue->GetMessage(i, pMessage, &messageLength);
-						OutputDebugStringA("D3D11 ERROR: ");
-						OutputDebugStringA(pMessage->pDescription);
-						OutputDebugStringA("\n");
-						Testa(pMessage->pDescription);
-						free(pMessage);
-					}
-				}
-			}
-			// --- 调试代码结束 ---
-
+		if (FAILED(hr))
+		{
 			MessageBox(NULL, L"CreateInputLayout Failed! Check Output Window for details.", L"Error", MB_OK);
 			return false;
 		}

@@ -14,8 +14,7 @@ int main()
 	{
 		// 创建 HARDWARE 设备
 
-		// 后续去掉调试表示！！！
-		UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG;
+		UINT creationFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
 		D3D_FEATURE_LEVEL featureLevels[] = {
 			D3D_FEATURE_LEVEL_11_1,
@@ -80,27 +79,38 @@ int main()
 		swapChain->SetBackgroundColor(&color);
 	}
 
-	if (!inkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain)) {
-		// 初始化失败，可能是 hlsl 文件没找到
-		MessageBox(NULL, L"Failed to init D3D Renderer. Check InkShader.hlsl location.", L"Error", MB_OK);
+	if (!inkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain))
+	{
+		MessageBox(NULL, L"Failed to init D3D Renderer.", L"Error", MB_OK);
 	}
 	inkRenderer.SetScreenSize((float)windowInfo.w, (float)windowInfo.h);
 
-	// --- 开始 D3D 绘制 ---
-	// 1. 不需要 BeginDraw，但可以手动 Clear (如果需要背景色)
+	// 开始绘制
 	float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	// 清空我们的 RTV
 	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
 
-	float x1 = 100.0f;
-	float y1 = 100.0f;
-	float r1 = 25.0f;
+	{
+		float x1 = 100.0f;
+		float y1 = 100.0f;
+		float r1 = 25.0f;
 
-	float x2 = 500.0f;
-	float y2 = 500.0f;
-	float r2 = 150.0f;
+		float x2 = 500.0f;
+		float y2 = 500.0f;
+		float r2 = 150.0f;
 
-	inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
+		inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
+	}
+	{
+		float x1 = 500.0f;
+		float y1 = 500.0f;
+		float r1 = 150.0f;
+
+		float x2 = 800.0f;
+		float y2 = 800.0f;
+		float r2 = 50.0f;
+
+		inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
+	}
 
 	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 

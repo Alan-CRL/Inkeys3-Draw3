@@ -13,7 +13,6 @@ struct VS_INPUT
     float2 pos : POSITION;
     float4 color : COLOR;
     
-    // 【修改】不要用 P1, P2 这种带数字的
     float2 p1 : VAL_START; // 起点坐标
     float2 p2 : VAL_END; // 终点坐标
     float r1 : VAL_RAD_START; // 起点半径
