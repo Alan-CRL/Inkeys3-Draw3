@@ -34,9 +34,11 @@ public:
 };
 extern WindowInfoClass windowInfo;
 
-//CComPtr<ID2D1Factory1> d2dFactory1;
 CComPtr<ID3D11Device> d3dDevice_HARDWARE;
-//CComPtr<ID2D1Device> d2dDevice_HARDWARE;
+CComPtr<IDXGIDevice> dxgiDevice;
+
+CComPtr<ID2D1Factory1> d2dFactory1;
+CComPtr<ID2D1Device> d2dDevice_HARDWARE;
 
 HWND windowHWND;
 

@@ -29,7 +29,20 @@ inline ShaderBlob LoadShaderFromResource(int resourceID) {
 }
 
 // 包含绘制所需的全部逻辑数据，不仅仅是位置
-struct InkVertex {
+struct InkVertex
+{
+	InkVertex() {};
+	InkVertex(float x1Tar, float y1Tar, float r1Tar, float x2Tar, float y2Tar, float r2Tar, XMFLOAT4 colorTar)
+	{
+		pos = XMFLOAT2(x1Tar, y1Tar);
+		color = colorTar;
+		p1 = XMFLOAT2(x1Tar, y1Tar);
+		p2 = XMFLOAT2(x2Tar, y2Tar);
+		r1 = r1Tar;
+		r2 = r2Tar;
+		shapeType = 0;
+	}
+
 	XMFLOAT2 pos;       // POSITION
 	XMFLOAT4 color;     // COLOR
 	XMFLOAT2 p1;        // VAL_P1
@@ -57,6 +70,8 @@ public:
 	CComPtr<ID3D11Buffer>           dynamicVB;
 	CComPtr<ID3D11BlendState>       alphaBlendState;
 	CComPtr<ID3D11RasterizerState>  rasterState;
+
+	CComPtr<ID3D11Query> g_frameFinishQuery;
 
 	// 初始化 (保持大部分逻辑不变，只修改 InputLayout 和 VB 大小)
 	bool Init(ID3D11Device* inDevice, ID3D11DeviceContext* inContext, IDXGISwapChain1* swapChain)
@@ -87,10 +102,19 @@ public:
 		blendDesc.RenderTarget[0].RenderTargetWriteMask = 0x0F;
 		device->CreateBlendState(&blendDesc, &alphaBlendState);
 
-		// 3. 创建动态顶点缓冲 (预留足够空间绘制一批线段，例如 100 个 quad)
-		// 这里我们每次 DrawMap 一次，所以最小 6 个顶点即可
-		D3D11_BUFFER_DESC vbDesc = { sizeof(InkVertex) * 6, D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
-		device->CreateBuffer(&vbDesc, nullptr, &dynamicVB);
+		// 3. 创建动态顶点缓冲：固定 4MB
+		const UINT INITIAL_VB_BYTES = 4 * 1024 * 1024; // 4MB
+		D3D11_BUFFER_DESC vbDesc = {};
+		vbDesc.ByteWidth = INITIAL_VB_BYTES;
+		vbDesc.Usage = D3D11_USAGE_DYNAMIC;
+		vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		vbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		HRESULT hr = device->CreateBuffer(&vbDesc, nullptr, &dynamicVB);
+		if (FAILED(hr))
+		{
+			MessageBox(NULL, L"Create Dynamic Vertex Buffer Failed!", L"Error", MB_OK);
+			return false;
+		}
 
 		// 4. 加载 Shader
 		if (!LoadShaders()) return false;
@@ -113,6 +137,8 @@ public:
 			HRESULT hr = device->CreateRasterizerState(&rasterDesc, &rasterState);
 			if (FAILED(hr)) return false;
 		}
+
+		InitFrameSync(inDevice);
 
 		return true;
 	}
@@ -137,6 +163,18 @@ public:
 		vp.TopLeftX = 0;
 		vp.TopLeftY = 0;
 		context->RSSetViewports(1, &vp);
+	}
+
+	void InitFrameSync(ID3D11Device* device)
+	{
+		D3D11_QUERY_DESC desc{};
+		desc.Query = D3D11_QUERY_EVENT;
+		desc.MiscFlags = 0;
+
+		HRESULT hr = device->CreateQuery(&desc, &g_frameFinishQuery);
+		if (FAILED(hr)) {
+			// 处理错误：记录日志或抛异常
+		}
 	}
 
 	// --- 核心绘制函数 ---
@@ -165,7 +203,7 @@ public:
 			vertices[i].p2 = XMFLOAT2(x2, y2);
 			vertices[i].r1 = r1;
 			vertices[i].r2 = r2;
-			vertices[i].shapeType = 1; // 1 = InkStroke
+			vertices[i].shapeType = 0;
 			};
 
 		// Triangle 1
@@ -202,6 +240,122 @@ public:
 		context->RSSetState(rasterState);
 		context->Draw(6, 0);
 	}
+	void DrawStrokeSegment2(const vector<InkVertex>& capsules, size_t beginIndex, size_t endIndex)
+	{
+		if (!device || !context) return;
+		if (beginIndex >= endIndex) return;
+		if (beginIndex >= capsules.size()) return;
+
+		endIndex = min(endIndex, capsules.size());
+		size_t capsuleCountTotal = endIndex - beginIndex;
+		if (capsuleCountTotal == 0) return;
+
+		// 查询当前 4MB VB 实际能容纳多少胶囊
+		VBCapacity cap = GetVBCapacity();
+		if (cap.maxCapsules == 0) return; // 非法情况（VB 创建失败）
+
+		// 分批绘制：每次最多绘制 cap.maxCapsules 个胶囊
+		size_t remainingCapsules = capsuleCountTotal;
+		size_t capsuleOffset = 0; // 在 [beginIndex, endIndex) 内的偏移
+
+		int i = 0;
+		while (remainingCapsules > 0)
+		{
+			cerr << ++i << endl;
+
+			size_t capsulesThisDraw = min(remainingCapsules, cap.maxCapsules);
+			size_t vertsThisDraw = capsulesThisDraw * VERTS_PER_CAPSULE;
+
+			// 1. Map 当前批次需要的顶点空间（WRITE_DISCARD）
+			D3D11_MAPPED_SUBRESOURCE map{};
+			HRESULT hr = context->Map(dynamicVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &map);
+			if (FAILED(hr))
+				return; // 失败直接退出或打日志
+
+			InkVertex* vertices = reinterpret_cast<InkVertex*>(map.pData);
+
+			// 2. 填充本批次的所有胶囊
+			for (size_t i = 0; i < capsulesThisDraw; ++i)
+			{
+				const InkVertex& capDesc = capsules[beginIndex + capsuleOffset + i];
+
+				float x1 = capDesc.p1.x;
+				float y1 = capDesc.p1.y;
+				float x2 = capDesc.p2.x;
+				float y2 = capDesc.p2.y;
+				float r1 = capDesc.r1;
+				float r2 = capDesc.r2;
+				DirectX::XMFLOAT4 color = capDesc.color;
+				int shapeType = capDesc.shapeType;
+
+				// 计算单个胶囊的包围盒
+				float minX = min(x1 - r1, x2 - r2);
+				float minY = min(y1 - r1, y2 - r2);
+				float maxX = max(x1 + r1, x2 + r2);
+				float maxY = max(y1 + r1, y2 + r2);
+
+				float padding = 2.0f;
+				minX -= padding; minY -= padding;
+				maxX += padding; maxY += padding;
+
+				// 当前胶囊的 6 个顶点在 buffer 中的起始位置
+				InkVertex* v = vertices + i * VERTS_PER_CAPSULE;
+
+				auto SetV = [&](int idx, float px, float py)
+					{
+						v[idx].pos = DirectX::XMFLOAT2(px, py);
+						v[idx].color = color;
+						v[idx].p1 = DirectX::XMFLOAT2(x1, y1);
+						v[idx].p2 = DirectX::XMFLOAT2(x2, y2);
+						v[idx].r1 = r1;
+						v[idx].r2 = r2;
+						v[idx].shapeType = shapeType;
+					};
+
+				// Triangle 1
+				SetV(0, minX, minY); // Top-Left
+				SetV(1, maxX, minY); // Top-Right
+				SetV(2, minX, maxY); // Bottom-Left
+
+				// Triangle 2
+				SetV(3, minX, maxY); // Bottom-Left
+				SetV(4, maxX, minY); // Top-Right
+				SetV(5, maxX, maxY); // Bottom-Right
+			}
+
+			context->Unmap(dynamicVB, 0);
+
+			// 3. 设置管线并 Draw 本批次
+			UINT stride = sizeof(InkVertex);
+			UINT offset = 0;
+			context->IASetInputLayout(inputLayout);
+			context->IASetVertexBuffers(0, 1, &dynamicVB.p, &stride, &offset);
+			context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+			context->VSSetShader(vertexShader, nullptr, 0);
+			context->VSSetConstantBuffers(0, 1, &screenCB.p);
+
+			context->PSSetShader(pixelShader, nullptr, 0);
+
+			context->OMSetBlendState(alphaBlendState, nullptr, 0xFFFFFFFF);
+			context->RSSetState(rasterState);
+
+			context->Draw(static_cast<UINT>(vertsThisDraw), 0);
+
+			// 本批次结束，移动到下一批
+			capsuleOffset += capsulesThisDraw;
+			remainingCapsules -= capsulesThisDraw;
+		}
+
+		context->End(g_frameFinishQuery);
+
+		BOOL done = FALSE;
+		// 注意：GetData 会在 GPU 还没执行到这个 Query 时返回 S_FALSE
+		while (S_OK != context->GetData(g_frameFinishQuery, &done, sizeof(done), 0))
+		{
+			this_thread::yield();
+		}
+	}
 
 private:
 	bool LoadShaders() {
@@ -235,5 +389,30 @@ private:
 		}
 
 		return true;
+	}
+
+	// 每个胶囊用 6 个顶点（三角形列表：两个三角形）
+	static constexpr size_t VERTS_PER_CAPSULE = 6;
+
+	struct VBCapacity
+	{
+		size_t maxVertices;
+		size_t maxCapsules;
+	};
+
+	VBCapacity GetVBCapacity() const
+	{
+		VBCapacity cap{ 0, 0 };
+		if (!dynamicVB) return cap;
+
+		D3D11_BUFFER_DESC desc{};
+		dynamicVB->GetDesc(&desc);
+
+		size_t maxVertices = desc.ByteWidth / sizeof(InkVertex);
+		size_t maxCapsules = maxVertices / VERTS_PER_CAPSULE;
+
+		cap.maxVertices = maxVertices;
+		cap.maxCapsules = maxCapsules;
+		return cap;
 	}
 };

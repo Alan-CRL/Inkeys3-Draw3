@@ -57,6 +57,8 @@ float4 main(PS_INPUT input) : SV_Target
     
     if (input.shapeType == 1)
     {
+        // 由于缝隙问题暂时废弃
+        
         // 这里的 d 还是凸包 (没有挖空)
         d = GetInkDist_Convex(input.pixPos, input.p1, input.p2, input.r1, input.r2);
         

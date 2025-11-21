@@ -9,6 +9,13 @@ int main()
 {
 	timeBeginPeriod(1); // 全局高精度计时器
 
+	// D2D 工厂
+	{
+		ID2D1Factory1* tmpFactory = nullptr;
+		D2D1CreateFactory(D2D1_FACTORY_TYPE_MULTI_THREADED, __uuidof(ID2D1Factory1), NULL, (IID_PPV_ARGS(&tmpFactory)));
+		d2dFactory1.Attach(tmpFactory);
+	}
+
 	// 初始化 D3D 设备
 	CComPtr<ID3D11DeviceContext> d3dDeviceContext; // DC
 	{
@@ -33,11 +40,24 @@ int main()
 			nullptr,                    // 返回实际的功能级别
 			&d3dDeviceContext           // 返回设备上下文
 		);
+		d3dDevice_HARDWARE.QueryInterface(&dxgiDevice);
+
+		// D2D
+		d2dFactory1->CreateDevice(dxgiDevice, &d2dDevice_HARDWARE);
+	}
+
+	// D2D 设备
+	CComPtr<ID2D1DeviceContext> d2dDeviceContext;
+	{
+		d2dDevice_HARDWARE->CreateDeviceContext(
+			D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+			&d2dDeviceContext
+		);
 	}
 
 	// 窗口创建
 	{
-		windowHWND = hiex::initgraph_win32(windowInfo.w, windowInfo.h);
+		windowHWND = hiex::initgraph_win32(windowInfo.w, windowInfo.h, EW_SHOWCONSOLE);
 	}
 
 	// SwapChain
@@ -55,9 +75,6 @@ int main()
 		swapChainDesc.Scaling = DXGI_SCALING_NONE;
 		swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 		swapChainDesc.Flags = 0;
-
-		CComPtr<IDXGIDevice> dxgiDevice;
-		d3dDevice_HARDWARE.QueryInterface(&dxgiDevice);
 
 		CComPtr<IDXGIAdapter> dxgiAdapter;
 		dxgiDevice->GetAdapter(&dxgiAdapter);
@@ -78,6 +95,25 @@ int main()
 		DXGI_RGBA color = { 1.0f, 1.0f, 1.0f, 1.0f };
 		swapChain->SetBackgroundColor(&color);
 	}
+	// D2D Bitmap
+	{
+		CComPtr<IDXGISurface> dxgiBackBuffer;
+		swapChain->GetBuffer(0, __uuidof(IDXGISurface), (void**)&dxgiBackBuffer);
+
+		D2D1_BITMAP_PROPERTIES1 bitmapProperties = D2D1::BitmapProperties1(
+			D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+			D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
+		);
+
+		CComPtr<ID2D1Bitmap1> d2dTargetBitmap;
+		d2dDeviceContext->CreateBitmapFromDxgiSurface(
+			dxgiBackBuffer,
+			&bitmapProperties,
+			&d2dTargetBitmap
+		);
+
+		d2dDeviceContext->SetTarget(d2dTargetBitmap);
+	}
 
 	if (!inkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain))
 	{
@@ -85,10 +121,7 @@ int main()
 	}
 	inkRenderer.SetScreenSize((float)windowInfo.w, (float)windowInfo.h);
 
-	// 开始绘制
-	float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
-
+	vector<InkVertex> list;
 	{
 		float x1 = 100.0f;
 		float y1 = 100.0f;
@@ -98,21 +131,247 @@ int main()
 		float y2 = 500.0f;
 		float r2 = 150.0f;
 
-		inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
-	}
-	{
-		float x1 = 500.0f;
-		float y1 = 500.0f;
-		float r1 = 150.0f;
-
-		float x2 = 800.0f;
-		float y2 = 800.0f;
-		float r2 = 50.0f;
-
-		inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
+		for (int i = 1; i <= 100000; i++)
+		{
+			list.emplace_back(InkVertex(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f)));
+		}
 	}
 
+	Testi(1);
+
+	//{
+	//	float x1 = 500.0f;
+	//	float y1 = 500.0f;
+	//	float r1 = 150.0f;
+
+	//	float x2 = 800.0f;
+	//	float y2 = 800.0f;
+	//	float r2 = 50.0f;
+
+	//	//list.push_back(InkVertex(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f)));
+	//}
+
+	chrono::high_resolution_clock::time_point reckon;
+	reckon = chrono::high_resolution_clock::now();
+
+	cerr << "start" << endl;
+
+	// 开始绘制
+	float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
+	inkRenderer.DrawStrokeSegment2(list, 0, list.size());
 	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
+
+	cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
+
+	Testi(2);
+
+	{
+		reckon = chrono::high_resolution_clock::now();
+
+		float x1 = 100.0f;
+		float y1 = 100.0f;
+		float r1 = 25.0f;
+
+		float x2 = 500.0f;
+		float y2 = 500.0f;
+		float r2 = 150.0f;
+
+		for (int i = 1; i <= 100000; i++)
+			inkRenderer.DrawStrokeSegment(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f));
+
+		// 同步本帧完成
+		d3dDeviceContext->End(inkRenderer.g_frameFinishQuery);
+
+		BOOL done = FALSE;
+		// 注意：GetData 会在 GPU 还没执行到这个 Query 时返回 S_FALSE
+		while (S_OK != d3dDeviceContext->GetData(inkRenderer.g_frameFinishQuery, &done, sizeof(done), 0))
+		{
+			this_thread::yield();
+		}
+
+		swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
+
+		cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
+	}
+
+	Testi(3);
+
+	{
+		reckon = chrono::high_resolution_clock::now();
+
+		d2dDeviceContext->BeginDraw();
+
+		for (int i = 1; i <= 100000; i++)
+		{
+			// 绘制一段墨迹（测试）
+			// 样式为两端粗细不同的线段，起始端是凸出，而终点端是凹入的，结合切线计算和路径闭合
+			// 需要注意的是：当前代码设计之初就没有考虑过内涵的情况，并且不应该会出现这种粗细变化case，需要在后面模拟压感阶段避免
+
+			// 首先需要准备 (x1,y1,r1) (x2,y2,r2) 两个端点位置和半径
+
+			float x1 = 500.0f;
+			float y1 = 100.0f;
+			float r1 = 25.0f;
+
+			float x2 = 1000.0f;
+			float y2 = 500.0f;
+			float r2 = 150.0f;
+
+			{
+				// 圆心间距离
+				double dist = std::hypot(x2 - x1, y2 - y1);
+
+				// 保证不是内涵的情况
+				if (dist > abs(r1 - r2))
+				{
+					// 基准角度
+					double base_angle = std::atan2(y2 - y1, x2 - x1);
+
+					// 偏移角 alpha
+					// cos(alpha) = (r1 - r2) / d
+					// 这里的参数必须在 [-1, 1] 之间，前面的 if 检查保证了这一点
+					double alpha = acos((r1 - r2) / dist);
+
+					// 切线角度
+					double angle1 = base_angle + alpha;
+					double angle2 = base_angle - alpha;
+
+					float tp1x = x1 + r1 * cos(angle1);
+					float tp1y = y1 + r1 * sin(angle1);
+					float tp2x = x1 + r1 * cos(angle2);
+					float tp2y = y1 + r1 * sin(angle2);
+
+					float ep1x = x2 + r2 * cos(angle1);
+					float ep1y = y2 + r2 * sin(angle1);
+					float ep2x = x2 + r2 * cos(angle2);
+					float ep2y = y2 + r2 * sin(angle2);
+
+					// 计算路径
+
+					CComPtr<ID2D1PathGeometry> path;
+					CComPtr<ID2D1GeometrySink> sink;
+					d2dFactory1->CreatePathGeometry(&path);
+					path->Open(&sink);
+
+					sink->BeginFigure(D2D1::Point2F(tp1x, tp1y), D2D1_FIGURE_BEGIN_FILLED);
+
+					// 起始端圆弧
+					{
+						// 计算绘制的为优弧/劣弧
+						D2D1_ARC_SIZE arcSize = (r1 > r2) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
+
+						// 推算绘制线顺/逆时针
+
+						// 2. 判断方向 (SweepDirection)
+						// 计算 向量Start(u) 和 向量End(v) 的叉积 (CP)
+						// u = start - center, v = end - center
+						float ux = tp1x - x1;
+						float uy = tp1y - y1;
+						float vx = tp2x - x1;
+						float vy = tp2y - y1;
+
+						// 叉积 CP = x1*y2 - x2*y1
+						float cp = ux * vy - uy * vx;
+
+						// 在 Direct2D 屏幕坐标系中 (Y轴向下)：
+						// CP > 0 表示 从 Start 到 End 是 "顺时针" (Clockwise) 的最短路径
+						// CP < 0 表示 从 Start 到 End 是 "逆时针" (Counter-Clockwise) 的最短路径
+
+						D2D1_SWEEP_DIRECTION direction;
+						if (arcSize == D2D1_ARC_SIZE_SMALL)
+						{
+							// 如果是小弧，直接走最短路径
+							direction = (cp > 0) ? D2D1_SWEEP_DIRECTION_CLOCKWISE
+								: D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
+						}
+						else
+						{
+							// 如果是大弧，我们要走长的那条路，所以取反
+							direction = (cp > 0) ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
+								: D2D1_SWEEP_DIRECTION_CLOCKWISE;
+						}
+
+						sink->AddArc(D2D1::ArcSegment(
+							D2D1::Point2F(tp2x, tp2y),
+							D2D1::SizeF(r1, r1),
+							0.0f,
+							direction,
+							arcSize
+						));
+					}
+
+					sink->AddLine(D2D1::Point2F(ep2x, ep2y));
+
+					// 终点端圆弧
+					{
+						// 计算绘制的为优弧/劣弧
+						D2D1_ARC_SIZE arcSize = (r2 > r1) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL;
+
+						// 推算绘制线顺/逆时针
+
+						// 2. 判断方向 (SweepDirection)
+						// 计算 向量Start(u) 和 向量End(v) 的叉积 (CP)
+						// u = start - center, v = end - center
+						float ux = ep2x - x2;
+						float uy = ep2y - y2;
+						float vx = ep1x - x2;
+						float vy = ep1y - y2;
+
+						// 叉积 CP = x1*y2 - x2*y1
+						float cp = ux * vy - uy * vx;
+
+						// 在 Direct2D 屏幕坐标系中 (Y轴向下)：
+						// CP > 0 表示 从 Start 到 End 是 "顺时针" (Clockwise) 的最短路径
+						// CP < 0 表示 从 Start 到 End 是 "逆时针" (Counter-Clockwise) 的最短路径
+						// 我们需要取反
+
+						D2D1_SWEEP_DIRECTION direction;
+						if (arcSize == D2D1_ARC_SIZE_SMALL)
+						{
+							// 如果是小弧，直接走最短路径
+							direction = (cp > 0) ? D2D1_SWEEP_DIRECTION_CLOCKWISE
+								: D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE;
+						}
+						else
+						{
+							// 如果是大弧，我们要走长的那条路，所以取反
+							direction = (cp > 0) ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE
+								: D2D1_SWEEP_DIRECTION_CLOCKWISE;
+						}
+
+						sink->AddArc(D2D1::ArcSegment(
+							D2D1::Point2F(ep1x, ep1y),
+							D2D1::SizeF(r2, r2),
+							0.0f,
+							direction,
+							arcSize
+						));
+					}
+
+					sink->AddLine(D2D1::Point2F(tp1x, tp1y));
+
+					sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+					sink->Close();
+
+					// 绘制
+
+					CComPtr<ID2D1SolidColorBrush> strokeBrush;
+					d2dDeviceContext->CreateSolidColorBrush(
+						D2D1::ColorF(D2D1::ColorF::Red),
+						&strokeBrush
+					);
+
+					d2dDeviceContext->FillGeometry(path, strokeBrush);
+				}
+			}
+		}
+
+		d2dDeviceContext->EndDraw();
+		swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
+
+		cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
+	}
 
 	getmessage(EM_KEY);
 	return 0;
