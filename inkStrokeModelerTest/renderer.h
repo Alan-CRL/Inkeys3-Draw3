@@ -250,7 +250,7 @@ public:
 		size_t capsuleCountTotal = endIndex - beginIndex;
 		if (capsuleCountTotal == 0) return;
 
-		// 查询当前 4MB VB 实际能容纳多少胶囊
+		// 查询当前 VB 实际能容纳多少胶囊
 		VBCapacity cap = GetVBCapacity();
 		if (cap.maxCapsules == 0) return; // 非法情况（VB 创建失败）
 
@@ -345,15 +345,6 @@ public:
 			// 本批次结束，移动到下一批
 			capsuleOffset += capsulesThisDraw;
 			remainingCapsules -= capsulesThisDraw;
-		}
-
-		context->End(g_frameFinishQuery);
-
-		BOOL done = FALSE;
-		// 注意：GetData 会在 GPU 还没执行到这个 Query 时返回 S_FALSE
-		while (S_OK != context->GetData(g_frameFinishQuery, &done, sizeof(done), 0))
-		{
-			this_thread::yield();
 		}
 	}
 

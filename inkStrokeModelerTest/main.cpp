@@ -139,30 +139,30 @@ int main()
 
 	Testi(1);
 
-	//{
-	//	float x1 = 500.0f;
-	//	float y1 = 500.0f;
-	//	float r1 = 150.0f;
-
-	//	float x2 = 800.0f;
-	//	float y2 = 800.0f;
-	//	float r2 = 50.0f;
-
-	//	//list.push_back(InkVertex(x1, y1, r1, x2, y2, r2, XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f)));
-	//}
+	// 这一部分是测试 GPU 并行绘制大量胶囊
 
 	chrono::high_resolution_clock::time_point reckon;
 	reckon = chrono::high_resolution_clock::now();
-
-	cerr << "start" << endl;
 
 	// 开始绘制
 	float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	d3dDeviceContext->ClearRenderTargetView(inkRenderer.renderTargetView, clearColor);
 	inkRenderer.DrawStrokeSegment2(list, 0, list.size());
+
+	// 同步本帧完成
+	d3dDeviceContext->End(inkRenderer.g_frameFinishQuery);
+	BOOL done = FALSE;
+	// 注意：GetData 会在 GPU 还没执行到这个 Query 时返回 S_FALSE
+	while (S_OK != d3dDeviceContext->GetData(inkRenderer.g_frameFinishQuery, &done, sizeof(done), 0))
+	{
+		this_thread::yield();
+	}
+
 	swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 
 	cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
+
+	// 这一部分是测试 CPU 循环调用绘制大量胶囊
 
 	Testi(2);
 
@@ -182,7 +182,6 @@ int main()
 
 		// 同步本帧完成
 		d3dDeviceContext->End(inkRenderer.g_frameFinishQuery);
-
 		BOOL done = FALSE;
 		// 注意：GetData 会在 GPU 还没执行到这个 Query 时返回 S_FALSE
 		while (S_OK != d3dDeviceContext->GetData(inkRenderer.g_frameFinishQuery, &done, sizeof(done), 0))
@@ -195,13 +194,14 @@ int main()
 		cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
 	}
 
+	// 这一部分是测试 CPU 计算路径并绘制大量墨迹
+
 	Testi(3);
 
 	{
 		reckon = chrono::high_resolution_clock::now();
 
 		d2dDeviceContext->BeginDraw();
-
 		for (int i = 1; i <= 100000; i++)
 		{
 			// 绘制一段墨迹（测试）
@@ -368,6 +368,7 @@ int main()
 		}
 
 		d2dDeviceContext->EndDraw();
+
 		swapChain->Present(0, 0); // 第一个参数为 1 则开启垂直同步
 
 		cerr << chrono::duration<double, std::milli>(chrono::high_resolution_clock::now() - reckon).count() << "ms" << endl;
