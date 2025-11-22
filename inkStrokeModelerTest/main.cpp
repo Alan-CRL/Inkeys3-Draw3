@@ -77,6 +77,9 @@ int main()
 		swapChain->SetBackgroundColor(&color);
 	}
 
+	// 交换链应该保证指定脏区，而不是全部重绘
+	// 后续修改，非 flip_discard
+
 	inkRenderer.Init(d3dDevice_HARDWARE, d3dDeviceContext, swapChain);
 	inkRenderer.SetScreenSize((float)windowInfo.w, (float)windowInfo.h);
 
