@@ -95,7 +95,7 @@ public:
 		blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
 		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
 		blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO; // or INV_SRC_ALPHA
-		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_MAX;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		blendDesc.RenderTarget[0].RenderTargetWriteMask = 0x0F;
 		device->CreateBlendState(&blendDesc, &alphaBlendState);
 
@@ -175,6 +175,68 @@ public:
 	}
 
 	// --- 核心绘制函数 ---
+	void DrawStrokeSegment(float x1, float y1, float r1, float x2, float y2, float r2, XMFLOAT4 color)
+	{
+		// 1. 计算包围盒 (Bounding Box)
+		// 为了确保包含整个形状和抗锯齿边缘，我们计算两个圆的包围盒
+		float minX = min(x1 - r1, x2 - r2);
+		float minY = min(y1 - r1, y2 - r2);
+		float maxX = max(x1 + r1, x2 + r2);
+		float maxY = max(y1 + r1, y2 + r2);
+
+		// 额外扩充一点 padding (比如 2.0f) 以防 SDF 边缘被切断
+		float padding = 2.0f;
+		minX -= padding; minY -= padding;
+		maxX += padding; maxY += padding;
+
+		// 2. 填充顶点数据 (6个顶点组成的两个三角形 = 1个 Quad)
+		InkVertex vertices[6];
+
+		// 共享的几何属性
+		auto SetV = [&](int i, float x, float y) {
+			vertices[i].pos = XMFLOAT2(x, y);
+			vertices[i].color = color;
+			vertices[i].p1 = XMFLOAT2(x1, y1);
+			vertices[i].p2 = XMFLOAT2(x2, y2);
+			vertices[i].r1 = r1;
+			vertices[i].r2 = r2;
+			vertices[i].shapeType = 0;
+			};
+
+		// Triangle 1
+		SetV(0, minX, minY); // Top-Left
+		SetV(1, maxX, minY); // Top-Right
+		SetV(2, minX, maxY); // Bottom-Left
+
+		// Triangle 2
+		SetV(3, minX, maxY); // Bottom-Left
+		SetV(4, maxX, minY); // Top-Right
+		SetV(5, maxX, maxY); // Bottom-Right
+
+		// 3. 提交到 GPU
+		D3D11_MAPPED_SUBRESOURCE map;
+		if (SUCCEEDED(context->Map(dynamicVB, 0, D3D11_MAP_WRITE_DISCARD, 0, &map))) {
+			memcpy(map.pData, vertices, sizeof(vertices));
+			context->Unmap(dynamicVB, 0);
+		}
+
+		// 4. 设置管线状态并绘制
+		UINT stride = sizeof(InkVertex);
+		UINT offset = 0;
+		context->IASetInputLayout(inputLayout);
+		context->IASetVertexBuffers(0, 1, &dynamicVB.p, &stride, &offset);
+		context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		context->VSSetShader(vertexShader, nullptr, 0);
+		context->VSSetConstantBuffers(0, 1, &screenCB.p); // 绑定屏幕尺寸 CB
+
+		context->PSSetShader(pixelShader, nullptr, 0);
+
+		context->OMSetBlendState(alphaBlendState, nullptr, 0xFFFFFFFF);
+
+		context->RSSetState(rasterState);
+		context->Draw(6, 0);
+	}
 	void DrawStrokeSegment2(const vector<InkVertex>& capsules, size_t beginIndex, size_t endIndex)
 	{
 		if (!device || !context) return;

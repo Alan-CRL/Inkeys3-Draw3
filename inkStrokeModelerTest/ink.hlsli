@@ -7,20 +7,20 @@ cbuffer ScreenBuffer : register(b0)
     float2 padding;
 };
 
-// ¶¥µãÊäÈë£º°üº¬ÁË»æÖÆÐÎ×´ËùÐèµÄÈ«²¿¼¸ºÎ²ÎÊý
+// é¡¶ç‚¹è¾“å…¥ï¼šåŒ…å«äº†ç»˜åˆ¶å½¢çŠ¶æ‰€éœ€çš„å…¨éƒ¨å‡ ä½•å‚æ•°
 struct VS_INPUT
 {
     float2 pos : POSITION;
     float4 color : COLOR;
     
-    float2 p1 : VAL_START; // Æðµã×ø±ê
-    float2 p2 : VAL_END; // ÖÕµã×ø±ê
-    float r1 : VAL_RAD_START; // Æðµã°ë¾¶
-    float r2 : VAL_RAD_END; // ÖÕµã°ë¾¶
+    float2 p1 : VAL_START; // èµ·ç‚¹åæ ‡
+    float2 p2 : VAL_END; // ç»ˆç‚¹åæ ‡
+    float r1 : VAL_RAD_START; // èµ·ç‚¹åŠå¾„
+    float r2 : VAL_RAD_END; // ç»ˆç‚¹åŠå¾„
     int shapeType : VAL_TYPE;
 };
 
-// ÏñËØÊäÈë£º½«¼¸ºÎ²ÎÊýÍ¸´«¸øÏñËØ×ÅÉ«Æ÷½øÐÐÊýÑ§¼ÆËã
+// åƒç´ è¾“å…¥ï¼šå°†å‡ ä½•å‚æ•°é€ä¼ ç»™åƒç´ ç€è‰²å™¨è¿›è¡Œæ•°å­¦è®¡ç®—
 struct PS_INPUT
 {
     float4 pos : SV_POSITION;

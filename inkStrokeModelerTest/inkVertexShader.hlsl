@@ -6,16 +6,16 @@ PS_INPUT main(VS_INPUT input)
 {
     PS_INPUT output;
     
-    // 1. ¼ÆËã Clip Space ×ø±ê (äÖÈ¾¹ÜÏßĞèÒª)
-    // ½« [0, W] -> [-1, 1], [0, H] -> [1, -1]
+    // 1. è®¡ç®— Clip Space åæ ‡ (æ¸²æŸ“ç®¡çº¿éœ€è¦)
+    // å°† [0, W] -> [-1, 1], [0, H] -> [1, -1]
     float x = (input.pos.x / screenWidth) * 2.0 - 1.0;
     float y = -((input.pos.y / screenHeight) * 2.0 - 1.0);
     output.pos = float4(x, y, 0.0, 1.0);
     
-    // 2. ´«µİÔ­Ê¼ÏñËØ×ø±ê (SDF¼ÆËãĞèÒª)
+    // 2. ä¼ é€’åŸå§‹åƒç´ åæ ‡ (SDFè®¡ç®—éœ€è¦)
     output.pixPos = input.pos;
     
-    // 3. Í¸´«²ÎÊı
+    // 3. é€ä¼ å‚æ•°
     output.color = input.color;
     output.p1 = input.p1;
     output.p2 = input.p2;

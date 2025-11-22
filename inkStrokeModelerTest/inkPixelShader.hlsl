@@ -4,7 +4,7 @@
 
 float sdUnevenCapsule_Vertical(float2 p, float r1, float r2, float h)
 {
-    // ÓÉÓÚÊÇ¶Ô³ÆµÄ£¬Ö»¼ÆËã x µÄ¾ø¶ÔÖµ
+    // ç”±äºæ˜¯å¯¹ç§°çš„ï¼Œåªè®¡ç®— x çš„ç»å¯¹å€¼
     p.x = abs(p.x);
     
     // b = sin(alpha)
@@ -13,38 +13,38 @@ float sdUnevenCapsule_Vertical(float2 p, float r1, float r2, float h)
     float b2 = b * b;
     if (b2 > 1.0)
     {
-        // ÍË»¯Çé¿ö£º·µ»Øµ½½Ï´óÔ²µÄ¾àÀë
+        // é€€åŒ–æƒ…å†µï¼šè¿”å›åˆ°è¾ƒå¤§åœ†çš„è·ç¦»
         return length(p) - max(r1, r2);
     }
     
     float a = sqrt(1.0 - b2); // a = cos(alpha)
     
-    // ¹Ø¼üµã»ıÅĞ¶ÏÇøÓò
+    // å…³é”®ç‚¹ç§¯åˆ¤æ–­åŒºåŸŸ
     float k = dot(p, float2(-b, a));
     
-    if (k < 0.0) return length(p) - r1; // P1 Ô²Ã±ÇøÓò
-    if (k > a * h) return length(p - float2(0.0, h)) - r2; // P2 Ô²Ã±ÇøÓò
+    if (k < 0.0) return length(p) - r1; // P1 åœ†å¸½åŒºåŸŸ
+    if (k > a * h) return length(p - float2(0.0, h)) - r2; // P2 åœ†å¸½åŒºåŸŸ
     
-    return dot(p, float2(a, b)) - r1; // ÌİĞÎ/Ô²×¶²àÃæÇøÓò
+    return dot(p, float2(a, b)) - r1; // æ¢¯å½¢/åœ†é”¥ä¾§é¢åŒºåŸŸ
 }
 
-// °ü×°º¯Êı£º´¦Àí×ø±êĞı×ªºÍÆ½ÒÆ
+// åŒ…è£…å‡½æ•°ï¼šå¤„ç†åæ ‡æ—‹è½¬å’Œå¹³ç§»
 float GetInkDist_Convex(float2 p, float2 p1, float2 p2, float r1, float r2)
 {
-    float2 pa = p - p1; // ½« P Æ½ÒÆµ½ P1 ÎªÔ­µã
-    float2 ba = p2 - p1; // ÖáÏòÁ¿
-    float h = length(ba); // ¸ß¶È
+    float2 pa = p - p1; // å°† P å¹³ç§»åˆ° P1 ä¸ºåŸç‚¹
+    float2 ba = p2 - p1; // è½´å‘é‡
+    float h = length(ba); // é«˜åº¦
     
     if (h < 0.1) return length(pa) - r1;
     
-    // ¹éÒ»»¯ÖáÏò (×÷Îª¾Ö²¿ Y Öá)
+    // å½’ä¸€åŒ–è½´å‘ (ä½œä¸ºå±€éƒ¨ Y è½´)
     float2 yAxis = ba / h;
-    // ´¹Ö±ÖáÏò (×÷Îª¾Ö²¿ X Öá)
-    // Êµ¼ÊÉÏ sdUnevenCapsule_Vertical Ê¹ÓÃÁË abs(p.x)£¬ËùÒÔ X ÖáÕı·´ÎŞËùÎ½¡£
+    // å‚ç›´è½´å‘ (ä½œä¸ºå±€éƒ¨ X è½´)
+    // å®é™…ä¸Š sdUnevenCapsule_Vertical ä½¿ç”¨äº† abs(p.x)ï¼Œæ‰€ä»¥ X è½´æ­£åæ— æ‰€è°“ã€‚
     float2 xAxis = float2(-yAxis.y, yAxis.x);
     
-    // local_x = dot(pa, xAxis)  (µãµ½ÖáÏßµÄ´¹Ö±¾àÀë)
-    // local_y = dot(pa, yAxis)  (µãÔÚÖáÏßÉÏµÄÍ¶Ó°³¤¶È)
+    // local_x = dot(pa, xAxis)  (ç‚¹åˆ°è½´çº¿çš„å‚ç›´è·ç¦»)
+    // local_y = dot(pa, yAxis)  (ç‚¹åœ¨è½´çº¿ä¸Šçš„æŠ•å½±é•¿åº¦)
     float2 p_local = float2(dot(pa, xAxis), dot(pa, yAxis));
     
     return sdUnevenCapsule_Vertical(p_local, r1, r2, h);
@@ -57,22 +57,20 @@ float4 main(PS_INPUT input) : SV_Target
     
     if (input.shapeType == 1)
     {
-        // ÓÉÓÚ·ìÏ¶ÎÊÌâÔİÊ±·ÏÆú
-        
-        // ÕâÀïµÄ d »¹ÊÇÍ¹°ü (Ã»ÓĞÍÚ¿Õ)
+        // è¿™é‡Œçš„ d è¿˜æ˜¯å‡¸åŒ… (æ²¡æœ‰æŒ–ç©º)
         d = GetInkDist_Convex(input.pixPos, input.p1, input.p2, input.r1, input.r2);
         
-        float test = 0.0f; // Æ«ÒÆÁ¿
+        float test = 0.0f; // åç§»é‡
         float d_bite = (input.r2 + test) - length(input.pixPos - input.p2);
         d = max(d, d_bite); 
     }
     else if(input.shapeType == 0)
     {
-        // Í¹°ü½ºÄÒ£¨Õâ¸ö²»ÍÚ¿Õ - ĞèÒª±£Áô£©
+        // å‡¸åŒ…èƒ¶å›Šï¼ˆè¿™ä¸ªä¸æŒ–ç©º - éœ€è¦ä¿ç•™ï¼‰
         d = GetInkDist_Convex(input.pixPos, input.p1, input.p2, input.r1, input.r2);
     }
 
-    // ¿¹¾â³İ
+    // æŠ—é”¯é½¿
     float aa = fwidth(d);
     float alpha = 1.0 - smoothstep(-aa, aa, d);
     

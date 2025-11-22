@@ -238,6 +238,12 @@
     <None Include="inkVertexShader.cso">
       <Filter>资源文件</Filter>
     </None>
+    <None Include="main3.cpp">
+      <Filter>废弃代码</Filter>
+    </None>
+    <None Include="renderer2.h">
+      <Filter>废弃代码</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="inkVertexShader.hlsl">
