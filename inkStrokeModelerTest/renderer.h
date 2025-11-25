@@ -70,6 +70,12 @@ public:
 
 	CComPtr<ID3D11Query> g_frameFinishQuery;
 
+	void SetOMTarget()
+	{
+		ID3D11RenderTargetView* rtvs[] = { renderTargetView.p };
+		context->OMSetRenderTargets(1, rtvs, nullptr);
+	}
+
 	// 初始化 (保持大部分逻辑不变，只修改 InputLayout 和 VB 大小)
 	bool Init(ID3D11Device* inDevice, ID3D11DeviceContext* inContext, IDXGISwapChain1* swapChain)
 	{
@@ -80,8 +86,7 @@ public:
 		swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
 		device->CreateRenderTargetView(backBuffer, nullptr, &renderTargetView);
 
-		ID3D11RenderTargetView* rtvs[] = { renderTargetView.p };
-		context->OMSetRenderTargets(1, rtvs, nullptr);
+		SetOMTarget();
 
 		// 1. 创建常量缓冲
 		D3D11_BUFFER_DESC cbDesc = { sizeof(CB_ScreenSize), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
@@ -99,8 +104,8 @@ public:
 		blendDesc.RenderTarget[0].RenderTargetWriteMask = 0x0F;
 		device->CreateBlendState(&blendDesc, &alphaBlendState);
 
-		// 3. 创建动态顶点缓冲：固定 4MB
-		const UINT INITIAL_VB_BYTES = 4 * 1024 * 1024; // 4MB
+		// 3. 创建动态顶点缓冲：固定 64MB
+		const UINT INITIAL_VB_BYTES = 64 * 1024 * 1024; // 64MB
 		D3D11_BUFFER_DESC vbDesc = {};
 		vbDesc.ByteWidth = INITIAL_VB_BYTES;
 		vbDesc.Usage = D3D11_USAGE_DYNAMIC;
@@ -112,6 +117,8 @@ public:
 			MessageBox(NULL, L"Create Dynamic Vertex Buffer Failed!", L"Error", MB_OK);
 			return false;
 		}
+
+		cerr << "着色器 VB 缓冲上限 " << 64 << " MB。" << endl;
 
 		// 4. 加载 Shader
 		if (!LoadShaders()) return false;
@@ -196,7 +203,7 @@ public:
 		int i = 0;
 		while (remainingCapsules > 0)
 		{
-			cerr << ++i << endl;
+			cerr << "着色器绘制第 " << ++i << " 批次并行绘制。" << endl;
 
 			size_t capsulesThisDraw = min(remainingCapsules, cap.maxCapsules);
 			size_t vertsThisDraw = capsulesThisDraw * VERTS_PER_CAPSULE;
