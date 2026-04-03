@@ -36,11 +36,22 @@ struct CB_Global
 	XMFLOAT4 color;   // 当前笔画颜色
 };
 
-struct InkPoint
+enum InkStrokeSegmentFlags : uint32_t
 {
-	float x, y, r;
-	float time;
+	InkStrokeSegmentFlag_StartCut = 1u << 0,
+	InkStrokeSegmentFlag_EndCut = 1u << 1,
 };
+
+struct InkStrokeSegmentData
+{
+	XMFLOAT4 startData;   // x, y, radius, unused
+	XMFLOAT4 endData;     // x, y, radius, unused
+	XMFLOAT4 cutNormals;  // startCut.x, startCut.y, endCut.x, endCut.y
+	uint32_t flags = 0;
+	float padding[3] = {};
+};
+
+static_assert(sizeof(InkStrokeSegmentData) == 64, "InkStrokeSegmentData must match the HLSL structured buffer layout.");
 
 class InkRenderer
 {
@@ -76,7 +87,7 @@ public:
 
 	// 缓冲区管理
 	size_t m_bufferHead = 0; // 当前写入位置
-	const size_t MAX_BUFFER_CAPACITY = 200000; // 固定大容量 (约2.4MB)，通常足够一帧使用
+	const size_t MAX_BUFFER_CAPACITY = 200000; // 固定大容量 (约12.8MB)，通常足够一帧使用
 
 	// 视口属性
 	float viewportWidth = 0.0f;
@@ -84,20 +95,19 @@ public:
 
 	// 绘制函数部分
 public:
-	int DrawStroke(const vector<InkPoint>& points, XMFLOAT4 color, float shapeType = 0.0f, bool eraser = false)
+	int DrawStroke(const vector<InkStrokeSegmentData>& segments, XMFLOAT4 color, float shapeType = 0.0f, bool eraser = false)
 	{
-		size_t totalPoints = points.size();
-		if (totalPoints < 2) return 0;
+		size_t totalSegments = segments.size();
+		if (totalSegments == 0) return 0;
 
 		// 第几次分段绘制
 		size_t startIndex = 0;
 
-		// 循环切分提交，直到所有点都画完
-		// 条件：只要剩余点数足以构成至少一条线段（>=2点），就继续处理
-		while (startIndex < totalPoints - 1)
+		// 循环切分提交，直到所有图元都画完
+		while (startIndex < totalSegments)
 		{
 			// 1. 计算当前批次的大小
-			size_t remaining = totalPoints - startIndex;
+			size_t remaining = totalSegments - startIndex;
 			size_t batchCount = min(remaining, MAX_BUFFER_CAPACITY); // 每次最多提交 Buffer 的最大容量
 
 			// 2. 环形缓冲区逻辑：判断是追加(NoOverwrite)还是重置(Discard)
@@ -113,10 +123,10 @@ public:
 			D3D11_MAPPED_SUBRESOURCE map;
 			if (SUCCEEDED(context->Map(inkDataBuffer, 0, mapType, 0, &map)))
 			{
-				InkPoint* dst = reinterpret_cast<InkPoint*>(map.pData);
+				InkStrokeSegmentData* dst = reinterpret_cast<InkStrokeSegmentData*>(map.pData);
 
-				// 源数据指针偏移：points.data() + startIndex
-				memcpy(dst + m_bufferHead, points.data() + startIndex, batchCount * sizeof(InkPoint));
+				// 源数据指针偏移：segments.data() + startIndex
+				memcpy(dst + m_bufferHead, segments.data() + startIndex, batchCount * sizeof(InkStrokeSegmentData));
 
 				context->Unmap(inkDataBuffer, 0);
 			}
@@ -157,8 +167,7 @@ public:
 			context->RSSetState(rasterState);
 
 			// 6. 绘制当前批次
-			// 顶点数 = (点数 - 1) * 6
-			UINT vertexCount = (static_cast<UINT>(batchCount) - 1) * 6;
+			UINT vertexCount = static_cast<UINT>(batchCount) * 6;
 			context->Draw(vertexCount, 0);
 
 			// 清理绑定
@@ -169,10 +178,7 @@ public:
 			m_bufferHead += batchCount;
 
 			// 8. 更新下一次循环的起始位置
-			startIndex += (batchCount - 1);
-
-			// 为了保证连接处不断开，下一批次的起点必须是这一批次的终点
-			// 所以偏移量增加 (batchCount - 1)
+			startIndex += batchCount;
 		}
 
 		return 0;
@@ -283,12 +289,12 @@ public:
 			{
 				D3D11_BLEND_DESC blendDesc = {};
 				blendDesc.RenderTarget[0].BlendEnable = TRUE;
-				blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+				blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
 				blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
 				blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
 				blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-				blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
-				blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_MAX;
+				blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+				blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 				blendDesc.RenderTarget[0].RenderTargetWriteMask = 0x0F;
 				device->CreateBlendState(&blendDesc, &penBlendState);
 			}
@@ -299,11 +305,11 @@ public:
 			{
 				D3D11_BLEND_DESC blendDesc = {};
 				blendDesc.RenderTarget[0].BlendEnable = TRUE;
-				blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+				blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
 				blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
 				blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
 				blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
-				blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+				blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
 				blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 				blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 				device->CreateBlendState(&blendDesc, &alphaBlendState);
@@ -326,12 +332,12 @@ public:
 
 		// 5. 初始化固定大小的结构化缓冲区
 		D3D11_BUFFER_DESC bufDesc = {};
-		bufDesc.ByteWidth = static_cast<UINT>(MAX_BUFFER_CAPACITY * sizeof(InkPoint));
+		bufDesc.ByteWidth = static_cast<UINT>(MAX_BUFFER_CAPACITY * sizeof(InkStrokeSegmentData));
 		bufDesc.Usage = D3D11_USAGE_DYNAMIC;
 		bufDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 		bufDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		bufDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-		bufDesc.StructureByteStride = sizeof(InkPoint);
+		bufDesc.StructureByteStride = sizeof(InkStrokeSegmentData);
 
 		if (FAILED(device->CreateBuffer(&bufDesc, nullptr, &inkDataBuffer))) return false;
 

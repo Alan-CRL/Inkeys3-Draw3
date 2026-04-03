@@ -2,9 +2,12 @@
 
 #include "renderer.h"
 #include <atomic>
+#include <cmath>
 
 WindowInfoClass windowInfo;
 InkRenderer inkRenderer;
+
+void UnionRectInPlace(RECT& target, const RECT& add);
 
 namespace
 {
@@ -98,6 +101,266 @@ namespace
 
 		return hr;
 	}
+
+	constexpr float kMinMergeDistancePixels = 0.75f;
+	constexpr float kSegmentDirtyPaddingPixels = 3.0f;
+	constexpr float kVectorEpsilon = 1e-4f;
+
+	struct StrokeSample
+	{
+		float x = 0.0f;
+		float y = 0.0f;
+		float radius = 0.0f;
+	};
+
+	float LengthSq(float x, float y)
+	{
+		return x * x + y * y;
+	}
+
+	float DistanceSq(const StrokeSample& a, const StrokeSample& b)
+	{
+		return LengthSq(b.x - a.x, b.y - a.y);
+	}
+
+	XMFLOAT2 NormalizeOrZero(float x, float y)
+	{
+		float lenSq = LengthSq(x, y);
+		if (lenSq <= kVectorEpsilon) return XMFLOAT2(0.0f, 0.0f);
+
+		float invLen = 1.0f / sqrtf(lenSq);
+		return XMFLOAT2(x * invLen, y * invLen);
+	}
+
+	float GetSampleMergeDistance(const StrokeSample& a, const StrokeSample& b)
+	{
+		return max(kMinMergeDistancePixels, 0.25f * max(a.radius, b.radius));
+	}
+
+	bool ShouldMergeSample(const StrokeSample& a, const StrokeSample& b)
+	{
+		float threshold = GetSampleMergeDistance(a, b);
+		return DistanceSq(a, b) <= threshold * threshold;
+	}
+
+	bool TryBuildCutNormal(const StrokeSample& prev, const StrokeSample& current, const StrokeSample& next, XMFLOAT2& outNormal)
+	{
+		XMFLOAT2 prevDir = NormalizeOrZero(current.x - prev.x, current.y - prev.y);
+		XMFLOAT2 nextDir = NormalizeOrZero(next.x - current.x, next.y - current.y);
+
+		if (LengthSq(prevDir.x, prevDir.y) <= kVectorEpsilon || LengthSq(nextDir.x, nextDir.y) <= kVectorEpsilon)
+		{
+			return false;
+		}
+
+		XMFLOAT2 sum(prevDir.x + nextDir.x, prevDir.y + nextDir.y);
+		if (LengthSq(sum.x, sum.y) <= 0.04f)
+		{
+			return false;
+		}
+
+		outNormal = NormalizeOrZero(sum.x, sum.y);
+		return true;
+	}
+
+	void EmitStrokeSegment(
+		const StrokeSample& start,
+		const StrokeSample& end,
+		bool hasStartCut,
+		const XMFLOAT2& startCutNormal,
+		bool hasEndCut,
+		const XMFLOAT2& endCutNormal,
+		vector<InkStrokeSegmentData>& outSegments,
+		RECT& dirtyRect)
+	{
+		InkStrokeSegmentData segment{};
+		segment.startData = XMFLOAT4(start.x, start.y, start.radius, 0.0f);
+		segment.endData = XMFLOAT4(end.x, end.y, end.radius, 0.0f);
+		segment.cutNormals = XMFLOAT4(
+			hasStartCut ? startCutNormal.x : 0.0f,
+			hasStartCut ? startCutNormal.y : 0.0f,
+			hasEndCut ? endCutNormal.x : 0.0f,
+			hasEndCut ? endCutNormal.y : 0.0f
+		);
+		segment.flags =
+			(hasStartCut ? InkStrokeSegmentFlag_StartCut : 0u) |
+			(hasEndCut ? InkStrokeSegmentFlag_EndCut : 0u);
+		outSegments.push_back(segment);
+
+		float maxRadius = max(start.radius, end.radius) + kSegmentDirtyPaddingPixels;
+		RECT bounds(
+			static_cast<LONG>(floorf(min(start.x, end.x) - maxRadius)),
+			static_cast<LONG>(floorf(min(start.y, end.y) - maxRadius)),
+			static_cast<LONG>(ceilf(max(start.x, end.x) + maxRadius)),
+			static_cast<LONG>(ceilf(max(start.y, end.y) + maxRadius))
+		);
+		UnionRectInPlace(dirtyRect, bounds);
+	}
+
+	class IncrementalStrokeBuilder
+	{
+	public:
+		void Begin(const StrokeSample& sample)
+		{
+			Reset();
+			hasSeedSample = true;
+			seedSample = sample;
+			latestObservedSample = sample;
+		}
+
+		void PushSample(const StrokeSample& sample, vector<InkStrokeSegmentData>& outSegments, RECT& dirtyRect)
+		{
+			if (!hasSeedSample)
+			{
+				Begin(sample);
+				return;
+			}
+
+			latestObservedSample = sample;
+
+			if (!hasPendingSegment)
+			{
+				if (ShouldMergeSample(seedSample, sample))
+				{
+					return;
+				}
+
+				pendingStart = seedSample;
+				pendingEnd = sample;
+				pendingHasStartCut = false;
+				pendingStartCutNormal = XMFLOAT2(0.0f, 0.0f);
+				hasPendingSegment = true;
+				return;
+			}
+
+			if (ShouldMergeSample(pendingEnd, sample))
+			{
+				pendingEnd = sample;
+				return;
+			}
+
+			XMFLOAT2 cutNormal{};
+			bool hasEndCut = TryBuildCutNormal(pendingStart, pendingEnd, sample, cutNormal);
+			EmitStrokeSegment(
+				pendingStart,
+				pendingEnd,
+				pendingHasStartCut,
+				pendingStartCutNormal,
+				hasEndCut,
+				cutNormal,
+				outSegments,
+				dirtyRect
+			);
+
+			pendingStart = pendingEnd;
+			pendingEnd = sample;
+			pendingHasStartCut = hasEndCut;
+			pendingStartCutNormal = cutNormal;
+		}
+
+		void Finish(vector<InkStrokeSegmentData>& outSegments, RECT& dirtyRect)
+		{
+			if (!hasSeedSample)
+			{
+				return;
+			}
+
+			if (!hasPendingSegment)
+			{
+				EmitStrokeSegment(
+					latestObservedSample,
+					latestObservedSample,
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					outSegments,
+					dirtyRect
+				);
+			}
+			else
+			{
+				EmitStrokeSegment(
+					pendingStart,
+					pendingEnd,
+					pendingHasStartCut,
+					pendingStartCutNormal,
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					outSegments,
+					dirtyRect
+				);
+			}
+
+			Reset();
+		}
+
+		void EmitPreview(const StrokeSample& liveSample, vector<InkStrokeSegmentData>& outSegments, RECT& dirtyRect) const
+		{
+			if (!hasSeedSample)
+			{
+				return;
+			}
+
+			if (hasPendingSegment)
+			{
+				EmitStrokeSegment(
+					pendingStart,
+					liveSample,
+					pendingHasStartCut,
+					pendingStartCutNormal,
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					outSegments,
+					dirtyRect
+				);
+				return;
+			}
+
+			if (ShouldMergeSample(seedSample, liveSample))
+			{
+				EmitStrokeSegment(
+					liveSample,
+					liveSample,
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					false,
+					XMFLOAT2(0.0f, 0.0f),
+					outSegments,
+					dirtyRect
+				);
+				return;
+			}
+
+			EmitStrokeSegment(
+				seedSample,
+				liveSample,
+				false,
+				XMFLOAT2(0.0f, 0.0f),
+				false,
+				XMFLOAT2(0.0f, 0.0f),
+				outSegments,
+				dirtyRect
+			);
+		}
+
+	private:
+		void Reset()
+		{
+			hasSeedSample = false;
+			hasPendingSegment = false;
+			pendingHasStartCut = false;
+		}
+
+		bool hasSeedSample = false;
+		bool hasPendingSegment = false;
+		bool pendingHasStartCut = false;
+		StrokeSample seedSample{};
+		StrokeSample latestObservedSample{};
+		StrokeSample pendingStart{};
+		StrokeSample pendingEnd{};
+		XMFLOAT2 pendingStartCutNormal{};
+	};
 }
 
 void HighPrecisionWait(double frameTimeSpentMs, double targetFPS)
@@ -359,7 +622,8 @@ int main()
 
 	auto clearCanvas = [&swapChain]()
 		{
-			const XMFLOAT4 clearColor(1.0f, 1.0f, 1.0f, 0.0f);
+			// For transparent targets, clear to premultiplied transparent black or draw the real background first.
+			const XMFLOAT4 clearColor(1.0f, 1.0f, 1.0f, 1.0f);
 			inkRenderer.ClearRTV(inkRenderer.offScreenTexture1RTV, clearColor);
 			inkRenderer.ClearRTV(inkRenderer.renderTargetView, clearColor);
 			swapChain->Present(0, 0);
@@ -402,20 +666,15 @@ int main()
 
 			vector<Result> smoothed_stroke;
 			vector<Result> predicted_stroke;
-			size_t tot = 0;
-
-			float xO = m.x;
-			float yO = m.y;
-
-			float xT = m.x;
-			float yT = m.y;
+			IncrementalStrokeBuilder strokeBuilder;
+			size_t processedSmoothedStrokeCount = 0;
 
 			chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
 
 			Input input
 			{
 				.event_type = Input::EventType::kDown,
-				.position = ink::stroke_model::Vec2(xO,yO),
+				.position = ink::stroke_model::Vec2(m.x, m.y),
 				.time = Time(0.0)
 			};
 			modeler.Update(input, smoothed_stroke);
@@ -427,6 +686,105 @@ int main()
 			double maxThickness = baseThickness * 1.4;
 			double prevThickness = baseThickness;
 			double smoothingFactor = 0.2;
+			float thicknessAnchorX = static_cast<float>(m.x);
+			float thicknessAnchorY = static_cast<float>(m.y);
+
+			strokeBuilder.Begin(StrokeSample{
+				static_cast<float>(m.x),
+				static_cast<float>(m.y),
+				static_cast<float>(baseThickness * 0.5)
+			});
+
+			auto appendSmoothedStroke = [&](vector<InkStrokeSegmentData>& drawSegments, RECT& dirtyRect)
+				{
+					for (; processedSmoothedStrokeCount < smoothed_stroke.size(); ++processedSmoothedStrokeCount)
+					{
+						const Result& result = smoothed_stroke[processedSmoothedStrokeCount];
+
+						auto rawSpeed = hypot(result.velocity.x, result.velocity.y);
+						double ratio = clamp(static_cast<double>(rawSpeed / expected_speed), 0.0, 1.0);
+						double targetThickness = minThickness + (1.0 - ratio) * (maxThickness - minThickness);
+						double thickness = prevThickness;
+
+						if (hypot(result.position.x - thicknessAnchorX, result.position.y - thicknessAnchorY) >= baseThickness)
+						{
+							thickness = std::lerp(prevThickness, targetThickness, smoothingFactor);
+							thicknessAnchorX = result.position.x;
+							thicknessAnchorY = result.position.y;
+						}
+
+						StrokeSample sample{
+							result.position.x,
+							result.position.y,
+							static_cast<float>(prevThickness * 0.5)
+						};
+						strokeBuilder.PushSample(sample, drawSegments, dirtyRect);
+						prevThickness = thickness;
+					}
+				};
+
+			vector<InkStrokeSegmentData> initialSegments;
+			RECT initialDirty = RECT(0, 0, 0, 0);
+			appendSmoothedStroke(initialSegments, initialDirty);
+			RECT previousPreviewDirty = RECT(0, 0, 0, 0);
+
+			auto presentDirtyRect = [&](RECT& dirtyRect, const vector<InkStrokeSegmentData>& previewSegments, const RECT& previewDirty)
+				{
+					UnionRectInPlace(dirtyRect, previousPreviewDirty);
+					UnionRectInPlace(dirtyRect, previewDirty);
+
+					dirtyRect.left = max(0L, dirtyRect.left);
+					dirtyRect.top = max(0L, dirtyRect.top);
+					dirtyRect.right = min((long)windowInfo.w, dirtyRect.right);
+					dirtyRect.bottom = min((long)windowInfo.h, dirtyRect.bottom);
+
+					if (dirtyRect.right <= dirtyRect.left || dirtyRect.bottom <= dirtyRect.top)
+					{
+						dirtyRect = RECT(0, 0, 0, 0);
+						return false;
+					}
+
+					inkRenderer.SetOMTarget(inkRenderer.renderTargetView);
+
+					if (!isFirstFrame)
+					{
+						inkRenderer.CopyResource(inkRenderer.screenTexture, inkRenderer.offScreenTexture1, dirtyRect);
+					}
+					else
+					{
+						inkRenderer.context->CopyResource(inkRenderer.screenTexture, inkRenderer.offScreenTexture1);
+					}
+
+					if (!previewSegments.empty())
+					{
+						inkRenderer.SetOMTarget(inkRenderer.renderTargetView);
+						inkRenderer.DrawStroke(
+							previewSegments,
+							XMFLOAT4(1.0f, 0.0f, 0.0f, 0.30f),
+							static_cast<float>(g_brushShapeType.load(std::memory_order_relaxed)),
+							eraser
+						);
+					}
+
+					if (!isFirstFrame)
+					{
+						DXGI_PRESENT_PARAMETERS parameters = {};
+						parameters.DirtyRectsCount = 1;
+						parameters.pDirtyRects = &dirtyRect;
+						parameters.pScrollRect = nullptr;
+						parameters.pScrollOffset = nullptr;
+
+						swapChain->Present1(0, 0, &parameters);
+					}
+					else
+					{
+						swapChain->Present(0, 0);
+					}
+
+					isFirstFrame = false;
+					previousPreviewDirty = previewDirty;
+					return true;
+				};
 
 			// 帧率保持
 			chrono::high_resolution_clock::time_point rekon;
@@ -435,6 +793,7 @@ int main()
 				if (g_clearCanvasRequested.exchange(false, std::memory_order_relaxed))
 				{
 					clearCanvas();
+					previousPreviewDirty = RECT(0, 0, 0, 0);
 				}
 
 				rekon = chrono::high_resolution_clock::now();
@@ -452,116 +811,39 @@ int main()
 					.position = ink::stroke_model::Vec2(pt.x, pt.y),
 					.time = Time(chrono::duration<double>(chrono::high_resolution_clock::now() - start).count()) // 秒单位
 				};
-				vector<InkPoint> dryStroke;
+				vector<InkStrokeSegmentData> drawSegments;
 
 				modeler.Update(input, smoothed_stroke);
 				modeler.Predict(predicted_stroke);
-				if (!smoothed_stroke.empty() && (xO != smoothed_stroke.back().position.x || yO != smoothed_stroke.back().position.y))
+				appendSmoothedStroke(drawSegments, current);
+				if (!drawSegments.empty())
 				{
-					// 用于粗细平滑
-					float xI = xO;
-					float yI = yO;
-
-					for (size_t i = tot; i < smoothed_stroke.size(); i++)
-					{
-						bool isStroke = false;
-						if (smoothed_stroke.size() - tot <= strokes_num) isStroke = true;
-
-						if (!isStroke) tot = i;
-
-						/*graphics.DrawLine(&pen,
-							smoothed_stroke[i].position.x,
-							smoothed_stroke[i].position.y,
-							smoothed_stroke[i + 1].position.x,
-							smoothed_stroke[i + 1].position.y);*/
-
-						auto rawSpeed = hypot(smoothed_stroke[i].velocity.x, smoothed_stroke[i].velocity.y);
-						double ratio = clamp(static_cast<double>(rawSpeed / expected_speed), 0.0, 1.0);
-						double targetThickness = minThickness + (1.0 - ratio) * (maxThickness - minThickness);
-						double thickness = prevThickness;
-
-						if (hypot(smoothed_stroke[i].position.x - xI, smoothed_stroke[i].position.y - yI) >= baseThickness)
-						{
-							thickness = std::lerp(prevThickness, targetThickness, smoothingFactor);
-							xI = smoothed_stroke[i].position.x;
-							yI = smoothed_stroke[i].position.y;
-						}
-
-						// cout << "= " << rawSpeed << ":" << ratio << ", " << thickness << endl;
-
-						{
-							float x1 = smoothed_stroke[i].position.x, y1 = smoothed_stroke[i].position.y;
-							float w1 = static_cast<float>(prevThickness);
-
-							dryStroke.emplace_back(x1, y1, w1 / 2.0f, 0.0f);
-
-							UnionRectInPlace(current, RECT(x1 - w1, y1 - w1, x1 + w1, y1 + w1));
-						}
-
-						prevThickness = thickness;
-					}
+					inkRenderer.DrawStroke(
+						drawSegments,
+						XMFLOAT4(1.0f, 0.0f, 0.0f, 0.30f),
+						static_cast<float>(g_brushShapeType.load(std::memory_order_relaxed)),
+						eraser
+					);
 				}
-				inkRenderer.DrawStroke(
-					dryStroke,
-					XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f),
-					static_cast<float>(g_brushShapeType.load(std::memory_order_relaxed)),
-					eraser
-				);
 
 				if (!predicted_stroke.empty())
 				{
 					// TODO
 				}
 
-				// 处理脏区到屏幕范围
-				{
-					current.left = max(0L, current.left);
-					current.top = max(0L, current.top);
-					current.right = min((long)windowInfo.w, current.right);
-					current.bottom = min((long)windowInfo.h, current.bottom);
+				vector<InkStrokeSegmentData> previewSegments;
+				RECT previewDirty = RECT(0, 0, 0, 0);
+				strokeBuilder.EmitPreview(
+					StrokeSample{
+						static_cast<float>(pt.x),
+						static_cast<float>(pt.y),
+						static_cast<float>(prevThickness * 0.5)
+					},
+					previewSegments,
+					previewDirty
+				);
 
-					if (current.right < current.left || current.bottom < current.top)
-					{
-						current = RECT(0, 0, 0, 0);
-					}
-				}
-
-				if (current.left != 0 || current.top != 0 || current.right != 0 || current.bottom != 0)
-				{
-					// 拷贝2D目标至窗口缓冲
-					{
-						inkRenderer.SetOMTarget(inkRenderer.renderTargetView);
-
-						if (!isFirstFrame)
-						{
-							//inkRenderer.ClearRTV(inkRenderer.renderTargetView, XMFLOAT4(0.0f, 0.0f, 0.0f, 1.0f)); // DEBUG
-							inkRenderer.CopyResource(inkRenderer.screenTexture, inkRenderer.offScreenTexture1, current);
-						}
-						else
-						{
-							inkRenderer.context->CopyResource(inkRenderer.screenTexture, inkRenderer.offScreenTexture1);
-						}
-					}
-
-					// 帧结束
-					{
-						if (!isFirstFrame)
-						{
-							DXGI_PRESENT_PARAMETERS parameters = {};
-							parameters.DirtyRectsCount = 1;
-							parameters.pDirtyRects = &current;
-							parameters.pScrollRect = nullptr;
-							parameters.pScrollOffset = nullptr;
-
-							swapChain->Present1(0, 0, &parameters);
-						}
-						else
-						{
-							swapChain->Present(0, 0);
-						}
-					}
-					isFirstFrame = false;
-				}
+				presentDirtyRect(current, previewSegments, previewDirty);
 
 				if (!(GetAsyncKeyState(VK_LBUTTON) & 0x8000) && !(GetAsyncKeyState(VK_RBUTTON) & 0x8000)) break;
 				hiex::flushmessage_win32(EM_MOUSE, windowHWND);
@@ -580,15 +862,42 @@ int main()
 					int logicFPS = (costMs > 0.001) ? static_cast<int>(1000.0 / costMs) : 9999;
 					int actualFPS = (totalMs > 0.001) ? static_cast<int>(1000.0 / totalMs) : 9999;
 
-					cout << tot
+					cout << processedSmoothedStrokeCount
 						<< " logic: " << logicFPS << " FPS (" << costMs << "ms)"
 						<< " real: " << actualFPS << " FPS"
 						<< endl;
 				}
 			}
 
+			current = RECT(0, 0, 0, 0);
+			inkRenderer.SetOMTarget(inkRenderer.offScreenTexture1RTV);
+
+			POINT pt;
+			GetCursorPos(&pt);
+			ScreenToClient(windowHWND, &pt);
+
+			Input upInput
 			{
+				.event_type = Input::EventType::kUp,
+				.position = ink::stroke_model::Vec2(pt.x, pt.y),
+				.time = Time(chrono::duration<double>(chrono::high_resolution_clock::now() - start).count())
+			};
+			modeler.Update(upInput, smoothed_stroke);
+
+			vector<InkStrokeSegmentData> finalSegments;
+			appendSmoothedStroke(finalSegments, current);
+			strokeBuilder.Finish(finalSegments, current);
+
+			if (!finalSegments.empty())
+			{
+				inkRenderer.DrawStroke(
+					finalSegments,
+					XMFLOAT4(1.0f, 0.0f, 0.0f, 0.30f),
+					static_cast<float>(g_brushShapeType.load(std::memory_order_relaxed)),
+					eraser
+				);
 			}
+			presentDirtyRect(current, {}, RECT(0, 0, 0, 0));
 
 			hiex::flushmessage_win32(EM_MOUSE, windowHWND);
 		}

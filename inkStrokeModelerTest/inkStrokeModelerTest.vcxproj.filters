@@ -25,9 +25,6 @@
     <Filter Include="HLSL">
       <UniqueIdentifier>{46041589-9d49-4fea-b232-cc2c69a20672}</UniqueIdentifier>
     </Filter>
-    <Filter Include="废弃代码">
-      <UniqueIdentifier>{5f55532c-0c84-4427-a556-5396ab2509ef}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -226,23 +223,11 @@
     <None Include="ink.hlsli">
       <Filter>HLSL</Filter>
     </None>
-    <None Include="shader.hlsl">
-      <Filter>废弃代码</Filter>
-    </None>
-    <None Include="main2.cpp">
-      <Filter>废弃代码</Filter>
-    </None>
     <None Include="inkPixelShader.cso">
       <Filter>资源文件</Filter>
     </None>
     <None Include="inkVertexShader.cso">
       <Filter>资源文件</Filter>
-    </None>
-    <None Include="main3.cpp">
-      <Filter>废弃代码</Filter>
-    </None>
-    <None Include="renderer2.h">
-      <Filter>废弃代码</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

@@ -19,13 +19,12 @@ PS_INPUT main(uint id : SV_VertexID)
     uint realIndex = globalBufferOffset + segmentIndex;
     
     // 3. Vertex Pulling
-    InkPoint data1 = InkData[realIndex];
-    InkPoint data2 = InkData[realIndex + 1];
+    InkStrokeSegment data = InkData[realIndex];
 
-    float2 p1 = data1.pos;
-    float2 p2 = data2.pos;
-    float r1 = data1.r;
-    float r2 = data2.r;
+    float2 p1 = data.startData.xy;
+    float2 p2 = data.endData.xy;
+    float r1 = data.startData.z;
+    float r2 = data.endData.z;
     
     float2 templatePos = kQuadUVs[vertexIndex];
 
@@ -56,6 +55,9 @@ PS_INPUT main(uint id : SV_VertexID)
     output.p2 = p2;
     output.r1 = r1;
     output.r2 = r2;
+    output.startCutNormal = data.cutNormals.xy;
+    output.endCutNormal = data.cutNormals.zw;
+    output.flags = data.flags;
     
     return output;
 }

@@ -14,15 +14,17 @@ cbuffer ScreenBuffer : register(b0)
 };
 
 // 2. 结构定义
-struct InkPoint
+struct InkStrokeSegment
 {
-    float2 pos;
-    float r;
-    float time;
+    float4 startData;
+    float4 endData;
+    float4 cutNormals;
+    uint flags;
+    float3 padding;
 };
 
 // 3. 结构化缓冲区
-StructuredBuffer<InkPoint> InkData : register(t0);
+StructuredBuffer<InkStrokeSegment> InkData : register(t0);
 
 // 4. VS -> PS
 struct PS_INPUT
@@ -36,5 +38,8 @@ struct PS_INPUT
     nointerpolation float2 p2 : VAL_END;
     nointerpolation float r1 : VAL_RAD_START;
     nointerpolation float r2 : VAL_RAD_END;
+    nointerpolation float2 startCutNormal : VAL_START_CUT;
+    nointerpolation float2 endCutNormal : VAL_END_CUT;
+    nointerpolation uint flags : VAL_FLAGS;
     nointerpolation float shapeType : VAL_TYPE;
 };

@@ -264,11 +264,9 @@
     <ClCompile Include="HiEasyX\HiSysGUI\SysStatic.cpp" />
     <ClCompile Include="HiEasyX\HiWindow.cpp" />
     <ClCompile Include="main.cpp" />
-    <None Include="main3.cpp" />
     <None Include="ink.hlsli" />
     <None Include="inkPixelShader.cso" />
     <None Include="inkVertexShader.cso" />
-    <None Include="main2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="HiEasyX.h" />
@@ -305,13 +303,7 @@
     <ClInclude Include="HiEasyX\HiWindow.h" />
     <ClInclude Include="main.h" />
     <ClInclude Include="renderer.h" />
-    <None Include="renderer2.h" />
     <ClInclude Include="resource.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="shader.hlsl">
-      <FileType>Document</FileType>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="inkPixelShader.hlsl">
